@@ -1,0 +1,57 @@
+pipeline {
+    agent any
+
+    parameters {
+        string(name: 'USER', defaultValue: 'delivery', description: 'User of the delivery server')
+        string(name: 'backend_URL', defaultValue: '', description: 'URL of the backend')
+        string(name: 'github', defaultValue: '', description: 'Repository of the developer')
+    }
+
+    tools {
+        // Installer NodeJS
+        nodejs "NodeJS"
+    }
+
+    stages {
+        stage('Git') {
+            steps {
+                checkout([$class: 'GitSCM', branches: [[name: 'devf1']], userRemoteConfigs: [[url: "${params.github}"]]])
+            }
+        }
+
+        stage('Set Node.js Path') {
+            steps {
+                script {
+                    // Récupérer le chemin d'exécution de Node.js
+                    def nodePath = "/home/projetparis1/.nvm/versions/node/v12.22.5/bin"
+                    env.PATH = "${nodePath}:${env.PATH}"
+                }
+            }
+        }
+
+        stage('Build') {
+            steps {
+                sh "sed -i 's@BACKEND_BASE_URL@${params.backend_URL}@' src/environments/environment.prod.ts"
+                sh "npm ci"
+                sh "ng build --prod"
+            }
+        }
+
+        stage('Delivery') {
+            steps {
+                script {
+                    // Définir les détails de la machine distante
+                    def remoteHost = '192.168.238.143'
+                    def remoteUser = "${params.USER}"
+                    def remotePath = '/home/delivery/stockage/movie-app'
+
+                    // Construire le chemin complet de l'artefact
+                    def artifactPath = "${env.WORKSPACE}/dist/movie-app"
+
+                    // Exécuter la commande scp avec les informations d'identification fournies pour transférer l'artefact vers la machine distante
+                    sh "scp -i /home/projetparis1/.ssh/id_rsa_delivery -r ${artifactPath} ${remoteUser}@${remoteHost}:${remotePath}"
+                }
+            }
+        }
+    }
+}
